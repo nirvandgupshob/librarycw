@@ -1,5 +1,5 @@
 import sqlite3
-from tkinter import Tk, Toplevel, Label, Listbox, messagebox, END
+from tkinter import Tk, Toplevel, Label, Listbox, messagebox, END, StringVar, OptionMenu, Entry, Button
 from interface import configure_theme, create_rounded_entry, create_rounded_button, create_rounded_label
 from customtkinter import CTk
 
@@ -117,6 +117,118 @@ def initialize_database():
     conn.commit()
     conn.close()
 
+def search_items(search_window):
+    def execute_search():
+        conn = sqlite3.connect('library.db')
+        cursor = conn.cursor()
+
+        search_query = search_entry.get().strip()
+        search_criteria = criteria_var.get()
+
+        if not search_query:
+            messagebox.showerror("Ошибка", "Введите запрос для поиска.")
+            return
+
+        # Определяем SQL-запрос в зависимости от критерия
+        if search_criteria == "Название":
+            query = """
+                SELECT title, author, section, NULL as year
+                FROM books
+                WHERE title LIKE ?
+                UNION ALL
+                SELECT title, NULL as author, section, publication_date as year
+                FROM journals
+                WHERE title LIKE ?
+            """
+            params = (f"%{search_query}%", f"%{search_query}%")
+        elif search_criteria == "Автор":
+            query = """
+                SELECT title, author, section, NULL as year
+                FROM books
+                WHERE author LIKE ?
+            """
+            params = (f"%{search_query}%",)
+        elif search_criteria == "Тематика":
+            query = """
+                SELECT title, author, section, NULL as year
+                FROM books
+                WHERE section LIKE ?
+                UNION ALL
+                SELECT title, NULL as author, section, publication_date as year
+                FROM journals
+                WHERE section LIKE ?
+            """
+            params = (f"%{search_query}%", f"%{search_query}%")
+        elif search_criteria == "Год издания":
+            query = """
+                SELECT title, NULL as author, section, publication_date as year
+                FROM journals
+                WHERE publication_date LIKE ?
+            """
+            params = (f"{search_query}%",)  # Добавляем "%" для поиска по году.
+        else:
+            messagebox.showerror("Ошибка", "Выберите критерий поиска.")
+            return
+
+        try:
+            # Выполнение запроса
+            cursor.execute(query, params)
+            results = cursor.fetchall()
+
+            # Очистка и обновление результатов
+            results_listbox.delete(0, END)
+            if results:
+                for result in results:
+                    title, author, section, year = result
+                    author = author if author else "Не указано"
+                    year = year if year else "Не указано"
+                    results_listbox.insert(
+                        END,
+                        f"Название: {title}, Автор: {author}, Тематика: {section}, Год: {year}",
+                    )
+            else:
+                results_listbox.insert(END, "Результаты не найдены.")
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Произошла ошибка: {e}")
+        finally:
+            conn.close()
+
+
+
+    # Создание окна поиска
+    search_window.title("Поиск книг и журналов")
+    search_window.geometry("1000x1000")
+
+    # Поле ввода для поиска
+    search_label = Label(search_window, text="Введите запрос:")
+    search_label.pack(pady=5)
+    search_entry = Entry(search_window, width=50)
+    search_entry.pack(pady=5)
+
+    # Выбор критерия поиска
+    criteria_var = StringVar(value="Название")  # Критерий по умолчанию
+    criteria_label = Label(search_window, text="Выберите критерий:")
+    criteria_label.pack(pady=5)
+
+    criteria_dropdown = OptionMenu(
+        search_window, criteria_var, "Название", "Автор", "Тематика", "Год издания"
+    )
+    criteria_dropdown.pack(pady=5)
+
+    # Кнопка выполнения поиска
+    search_button = Button(search_window, text="Искать", command=execute_search)
+    search_button.pack(pady=10)
+
+    # Поле вывода результатов
+    results_listbox = Listbox(search_window, width=80, height=15)
+    results_listbox.pack(pady=10)
+
+    # Кнопка для закрытия окна поиска
+    close_button = Button(search_window, text="Закрыть", command=search_window.destroy)
+    close_button.pack(pady=10)
+
+
+
 def login_user(reader_id, password):
     conn = sqlite3.connect('library.db')
     cursor = conn.cursor()
@@ -135,12 +247,10 @@ def open_login_window():
             login_window.destroy()  # Закрыть окно авторизации
             if role == 'Библиотекарь':
                 open_admin_dashboard(reader_id)
-                ####################
-                ####################
+
             else:
                 open_user_dashboard(reader_id)
-                ####################
-                ####################
+                
         else:
             messagebox.showerror("Ошибка", "Неверный уникальный ID или пароль")
 
@@ -157,16 +267,112 @@ def open_login_window():
     password_entry.pack(pady=10)
     create_rounded_button(login_window, text="Войти", command=on_login).pack(pady=10)
 
-
-
-
 def open_user_dashboard(reader_id):
-    # Здесь будет код для отображения главной страницы пользователя (например, просмотр книг)
-    pass
+    def update_user_information():
+        conn = sqlite3.connect('library.db')
+        cursor = conn.cursor()
+
+        # Получение имени, фамилии, количества активных долгов
+        cursor.execute("SELECT first_name, last_name, active_debts FROM readers WHERE reader_id = ?", (reader_id,))
+        reader_info = cursor.fetchone()
+
+        if reader_info:
+            first_name, last_name, active_debts = reader_info
+
+            # Обновление текста меток
+            name_label.configure(text=f"Имя: {first_name} {last_name}")
+            debts_label.configure(text=f"Активные долги: {'Есть' if active_debts > 0 else 'Нет'}")
+
+            # Обработка долгов
+            if active_debts > 0:
+                cursor.execute("""
+                    SELECT loans.item_id, loans.issue_date, loans.due_date, books.title
+                    FROM loans
+                    JOIN books ON loans.item_id = books.book_id
+                    WHERE loans.reader_id = ? AND (julianday('now') - julianday(loans.due_date)) > 0
+                """, (reader_id,))
+                active_loans = cursor.fetchall()
+
+                # Если `debts_listbox` еще не создан, создаем его
+                if not hasattr(update_user_information, "debts_listbox"):
+                    update_user_information.debts_listbox = Listbox(user_window, width=80, height=10)
+                    update_user_information.debts_listbox.pack(pady=5)
+
+                # Очистка списка долгов перед обновлением
+                update_user_information.debts_listbox.delete(0, END)
+
+                if active_loans:
+                    for loan in active_loans:
+                        item_id, issue_date, due_date, title = loan
+                        update_user_information.debts_listbox.insert(
+                            END, f"Книга: {title} | ID: {item_id} | Выдана: {issue_date} | Срок: {due_date}"
+                        )
+            else:
+                # Удаляем debts_listbox, если он существует
+                if hasattr(update_user_information, "debts_listbox"):
+                    update_user_information.debts_listbox.destroy()
+                    del update_user_information.debts_listbox
+
+            # Обработка штрафов
+            cursor.execute("SELECT reason, amount, fine_date, status FROM fines WHERE reader_id = ?", (reader_id,))
+            fines = cursor.fetchall()
+
+            # Обновление текста метки штрафов
+            fines_label.configure(text=f"Активные штрафы: {len(fines)}")
+
+            if fines:
+                # Если `fines_listbox` еще не создан, создаем его
+                if not hasattr(update_user_information, "fines_listbox"):
+                    update_user_information.fines_listbox = Listbox(user_window, width=80, height=10)
+                    update_user_information.fines_listbox.pack(pady=5)
+
+                # Очистка списка штрафов перед обновлением
+                update_user_information.fines_listbox.delete(0, END)
+
+                for fine in fines:
+                    reason, amount, fine_date, status = fine
+                    update_user_information.fines_listbox.insert(
+                        END, f"Штраф: {reason} | Сумма: {amount:.2f} | Дата: {fine_date} | Статус: {status}"
+                    )
+            else:
+                # Удаляем fines_listbox, если он существует
+                if hasattr(update_user_information, "fines_listbox"):
+                    update_user_information.fines_listbox.destroy()
+                    del update_user_information.fines_listbox
+
+        else:
+            messagebox.showerror("Ошибка", "Не удалось загрузить информацию о пользователе.")
+        
+        conn.close()
+
+    # Создание окна личного кабинета пользователя
+    user_window = Toplevel(root)
+    configure_theme(user_window)
+    user_window.title("Личный кабинет")
+    user_window.geometry("400x1300")
+
+    # Метки для отображения информации
+    name_label = create_rounded_label(user_window, text="Загрузка...")  # Заглушка до обновления данных
+    name_label.pack(pady=5)
+    debts_label = create_rounded_label(user_window, text="Загрузка...")  # Заглушка до обновления данных
+    debts_label.pack(pady=5)
+    fines_label = create_rounded_label(user_window, text="Загрузка...")  # Заглушка до обновления данных
+    fines_label.pack(pady=5)
+    search_button = create_rounded_button(user_window, text="Поиск книг/журналов", command=lambda: search_items(Toplevel(user_window)))
+    search_button.pack(pady=10)
+    # Обновление информации о пользователе
+    update_user_information()
+
+    # Кнопка для выхода
+    create_rounded_button(user_window, text="Выйти", command=user_window.destroy).pack(pady=5)
+
+
 
 def open_admin_dashboard(reader_id):
     # Здесь будет код для отображения главной страницы администратора (например, управление книгами)
     pass
+
+
 
 def main_window():
     create_rounded_label(root, text="Library App").pack(pady=10)
@@ -179,3 +385,16 @@ if __name__ == "__main__":
     initialize_database()
     main_window()
     root.mainloop()
+
+'''
+Добавить:
+Поиск книг по критериям:
+    Автору,
+    Тематике,
+    Году издания,
+    Номеру журнала или выпуску.
+    Просмотр доступности
+Встать в очередь на литературу
+
+
+'''
