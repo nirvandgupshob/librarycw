@@ -120,36 +120,36 @@ def search_items(search_window):
         # Определяем SQL-запрос в зависимости от критерия
         if search_criteria == "Название":
             query = """
-                SELECT title, author, section, NULL as year
+                SELECT book_id, NULL as journal_id, title, author, section, NULL as year
                 FROM books
                 WHERE title LIKE ?
                 UNION ALL
-                SELECT title, NULL as author, section, publication_date as year
+                SELECT NULL as book_id, journal_id, title, NULL as author, section, publication_date as year
                 FROM journals
                 WHERE title LIKE ?
             """
             params = (f"%{search_query}%", f"%{search_query}%")
         elif search_criteria == "Автор":
             query = """
-                SELECT title, author, section, NULL as year
+                SELECT book_id, NULL as journal_id, title, author, section, NULL as year
                 FROM books
                 WHERE author LIKE ?
             """
             params = (f"%{search_query}%",)
         elif search_criteria == "Тематика":
             query = """
-                SELECT title, author, section, NULL as year
+                SELECT book_id, NULL as journal_id, title, author, section, NULL as year
                 FROM books
                 WHERE section LIKE ?
                 UNION ALL
-                SELECT title, NULL as author, section, publication_date as year
+                SELECT NULL as book_id, journal_id, title, NULL as author, section, publication_date as year
                 FROM journals
                 WHERE section LIKE ?
             """
             params = (f"%{search_query}%", f"%{search_query}%")
         elif search_criteria == "Год издания":
             query = """
-                SELECT title, NULL as author, section, publication_date as year
+                SELECT NULL as book_id, journal_id, title, NULL as author, section, publication_date as year
                 FROM journals
                 WHERE publication_date LIKE ?
             """
@@ -167,12 +167,13 @@ def search_items(search_window):
             results_listbox.delete(0, END)
             if results:
                 for result in results:
-                    title, author, section, year = result
+                    book_id, journal_id, title, author, section, year = result
                     author = author if author else "Не указано"
                     year = year if year else "Не указано"
+                    identifier = f"{book_id}" if book_id else f"{journal_id}"
                     results_listbox.insert(
                         END,
-                        f"Название: {title}, Автор: {author}, Тематика: {section}, Год: {year}",
+                        f"{identifier}, Название: {title}, Автор: {author}, Тематика: {section}, Год: {year}"
                     )
             else:
                 results_listbox.insert(END, "Результаты не найдены.")
@@ -180,6 +181,7 @@ def search_items(search_window):
             messagebox.showerror("Ошибка", f"Произошла ошибка: {e}")
         finally:
             conn.close()
+
 
 
 
@@ -351,8 +353,6 @@ def open_user_dashboard(reader_id):
         
         conn.close()
 
-
-
     # Создание окна личного кабинета пользователя
     user_window = Toplevel(root)
     configure_theme(user_window)
@@ -396,8 +396,7 @@ if __name__ == "__main__":
 
 '''
 Добавить:
-Сделать поиск экземпляров книг, а не книг
-Поиск книг по критериям:
+
 Встать в очередь на литературу через библиотекаря 
 
 
