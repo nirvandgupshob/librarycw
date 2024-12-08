@@ -105,31 +105,46 @@ def initialize_database():
     conn.commit()
     conn.close()
 
-def show_book_instances(event, results_listbox):
+def show_instances(event, results_listbox):
     # Получаем выделенный элемент
     selection = results_listbox.curselection()
     if not selection:
         return
 
     selected_item = results_listbox.get(selection[0])
-    
-    # Предполагаем, что ID книги указан в начале строки (из вашего формата)
-    book_id = selected_item.split(",")[0].strip()
-    
-    # Создаем окно для отображения экземпляров книги
+
+    # Определяем, что выбрано: книга или журнал
+    if "Зависит" in selected_item:  # Проверка для книги
+        item_id = selected_item.split(",")[0].strip()  # Получаем id книги
+        is_book = True
+    else:  # Если не книга, то это журнал
+        item_id = selected_item.split(",")[0].strip()  # Получаем id журнала
+        is_book = False
+
+    # Создаем окно для отображения экземпляров
     instances_window = Toplevel(root)
-    instances_window.title("Экземпляры книги")
+    instances_window.title("Экземпляры")
     instances_window.geometry("400x300")
 
     conn = sqlite3.connect('library.db')
     cursor = conn.cursor()
 
     try:
-        cursor.execute("""
-            SELECT book_instances.book_instance_id, book_instances.storage_shelf, book_instances.availability, book_instances.publisher, book_instances.year
-            FROM book_instances
-            WHERE book_instances.book_id = ?
-        """, (book_id,))
+        if is_book:
+            # Для книги - получаем экземпляры книги
+            cursor.execute("""
+                SELECT book_instances.book_instance_id, book_instances.storage_shelf, book_instances.publisher, book_instances.year, book_instances.availability
+                FROM book_instances
+                WHERE book_instances.book_id = ?
+            """, (item_id,))
+        else:
+            # Для журнала - получаем экземпляры журнала
+            cursor.execute("""
+                SELECT journals.journal_id, journals.storage_shelf, journals.title, journals.issue, journals.publication_date, journals.section, journals.availability
+                FROM journals
+                WHERE journals.journal_id = ?
+            """, (item_id,))
+        
         instances = cursor.fetchall()
 
         # Если экземпляры найдены
@@ -138,17 +153,27 @@ def show_book_instances(event, results_listbox):
             instances_listbox.pack(pady=10)
 
             for instance in instances:
-                instance_id, storage_shelf, availability, publisher, year = instance
-                in_stock = "Доступен" if availability else "Занят"
-                instances_listbox.insert(
-                    END, f"ID экземпляра: {instance_id}, Код хранения: {storage_shelf}, Доступность: {in_stock}, Издательство: {publisher}, Год издания: {year}"
-                )
+                if is_book:
+                    # Формат для книги
+                    instance_id, storage_shelf, publisher, year, availability = instance  # исправили распаковку
+                    in_stock = "Доступен" if availability else "Занят"
+                    instances_listbox.insert(
+                        END, f"ID экземпляра: {instance_id}, Код хранения: {storage_shelf}, Доступность: {in_stock}, Издательство: {publisher}, Год издания: {year}"
+                    )
+                else:
+                    # Формат для журнала
+                    instance_id, storage_shelf, title, issue, publication_date, section, availability = instance  # исправили распаковку
+                    in_stock = "Доступен" if availability else "Занят"
+                    instances_listbox.insert(
+                        END, f"ID экземпляра: {instance_id}, Код хранения: {storage_shelf}, Доступность: {in_stock}, Номер выпуска: {issue}, Дата публикации: {publication_date}, Тематика: {section}"
+                    )
         else:
             Label(instances_window, text="Нет доступных экземпляров.").pack(pady=10)
     except Exception as e:
         messagebox.showerror("Ошибка", f"Произошла ошибка: {e}")
     finally:
         conn.close()
+
 
 
 
@@ -216,7 +241,7 @@ def search_items(search_window):
                 for result in results:
                     book_id, journal_id, title, author, section, year = result
                     author = author if author else "Не указано"
-                    year = year if year else "Не указано"
+                    year = year if year else "Зависит от экземпляра"
                     identifier = f"{book_id}" if book_id else f"{journal_id}"
                     results_listbox.insert(
                         END,
@@ -256,7 +281,7 @@ def search_items(search_window):
 
     # Поле вывода результатов
     results_listbox = Listbox(search_window, width=80, height=15)
-    results_listbox.bind("<Double-Button-1>", lambda event: show_book_instances(event, results_listbox))
+    results_listbox.bind("<Double-Button-1>", lambda event: show_instances(event, results_listbox))
     results_listbox.pack(pady=10)
 
     # Кнопка для закрытия окна поиска
