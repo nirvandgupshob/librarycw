@@ -1,5 +1,5 @@
 import sqlite3
-from tkinter import Tk, Toplevel, Label, Listbox, messagebox, END, StringVar, OptionMenu, Entry, Button
+from tkinter import Tk, Toplevel, Label, Listbox, messagebox, END, StringVar, OptionMenu, Entry, Button, Radiobutton
 from interface import configure_theme, create_rounded_entry, create_rounded_button, create_rounded_label
 from customtkinter import CTk
 
@@ -104,6 +104,89 @@ def initialize_database():
     """)
     conn.commit()
     conn.close()
+
+def issue_window():
+    issue_window = Toplevel(root)
+    configure_theme(issue_window)
+    issue_window.title("Выдача экземпляра")
+    issue_window.geometry("400x500")
+
+    # Выбор: книга или журнал
+    selection_label = Label(issue_window, text="Выберите тип выдачи:")
+    selection_label.pack(pady=5)
+
+    issue_type = StringVar(value="book")
+    Radiobutton(issue_window, text="Книга", variable=issue_type, value="book").pack(pady=10)
+    Radiobutton(issue_window, text="Журнал", variable=issue_type, value="journal").pack(pady=10)
+
+    # Поля для ввода
+    Label(issue_window, text="ID экземпляра (книга) / ID журнала:").pack(pady=5)
+    instance_id_entry = Entry(issue_window)
+    instance_id_entry.pack(pady=5)
+
+    Label(issue_window, text="ID читателя:").pack(pady=5)
+    reader_id_entry = Entry(issue_window)
+    reader_id_entry.pack(pady=5)
+
+    Label(issue_window, text="Дата выдачи (ГГГГ-ММ-ДД):").pack(pady=5)
+    issue_date_entry = Entry(issue_window)
+    issue_date_entry.pack(pady=5)
+
+    Label(issue_window, text="Срок возврата (ГГГГ-ММ-ДД):").pack(pady=5)
+    due_date_entry = Entry(issue_window)
+    due_date_entry.pack(pady=5)
+
+    # Функция сохранения данных
+    def save_loan():
+        instance_id = instance_id_entry.get().strip()
+        reader_id = reader_id_entry.get().strip()
+        issue_date = issue_date_entry.get().strip()
+        due_date = due_date_entry.get().strip()
+        is_book = issue_type.get() == "book"
+
+        if not instance_id or not reader_id or not issue_date or not due_date:
+            messagebox.showerror("Ошибка", "Пожалуйста, заполните все обязательные поля.")
+            return
+
+        try:
+            conn = sqlite3.connect('library.db')
+            cursor = conn.cursor()
+
+            if is_book:
+                # Проверяем существование экземпляра книги
+                cursor.execute("SELECT 1 FROM book_instances WHERE book_instance_id = ?", (instance_id,))
+            else:
+                # Проверяем существование журнала
+                cursor.execute("SELECT 1 FROM journals WHERE journal_id = ?", (instance_id,))
+            
+            if not cursor.fetchone():
+                messagebox.showerror("Ошибка", "Экземпляр с указанным ID не найден.")
+                return
+
+            # Вставка данных в таблицу loans
+            cursor.execute("""
+                INSERT INTO loans (reader_id, book_instance_id, journal_id, issue_date, due_date)
+                VALUES (?, ?, ?, ?, ?)
+            """, (
+                reader_id,
+                instance_id if is_book else None,
+                None if is_book else instance_id,
+                issue_date,
+                due_date,
+            ))
+            conn.commit()
+
+            messagebox.showinfo("Успех", "Выдача успешно зарегистрирована.")
+            issue_window.destroy()
+
+        except sqlite3.Error as e:
+            messagebox.showerror("Ошибка", f"Не удалось сохранить выдачу: {e}")
+        finally:
+            conn.close()
+
+    # Кнопка сохранения
+    Button(issue_window, text="Зарегистрировать выдачу", command=save_loan).pack(pady=20)
+
 
 def show_instances(event, results_listbox):
     # Получаем выделенный элемент
@@ -451,6 +534,7 @@ def open_admin_dashboard(reader_id):
 
     search_button = create_rounded_button(admin_window, text="Поиск книг/журналов", command=lambda: search_items(Toplevel(admin_window)))
     search_button.pack(pady=10)
+    create_rounded_button(admin_window, text="Выдача книги", command=issue_window).pack(pady=10)
     # Кнопка для выхода
     create_rounded_button(admin_window, text="Выйти", command=admin_window.destroy).pack(pady=5)
     
@@ -470,7 +554,10 @@ if __name__ == "__main__":
 '''
 Добавить:
 
-Встать в очередь на литературу через библиотекаря 
+Встать в очередь на литературу через библиотекаря
+Оформление выдачи через библиотекаря
+
+
 
 
 '''
