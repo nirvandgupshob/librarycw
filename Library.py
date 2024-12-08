@@ -105,6 +105,53 @@ def initialize_database():
     conn.commit()
     conn.close()
 
+def show_book_instances(event, results_listbox):
+    # Получаем выделенный элемент
+    selection = results_listbox.curselection()
+    if not selection:
+        return
+
+    selected_item = results_listbox.get(selection[0])
+    
+    # Предполагаем, что ID книги указан в начале строки (из вашего формата)
+    book_id = selected_item.split(",")[0].strip()
+    
+    # Создаем окно для отображения экземпляров книги
+    instances_window = Toplevel(root)
+    instances_window.title("Экземпляры книги")
+    instances_window.geometry("400x300")
+
+    conn = sqlite3.connect('library.db')
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("""
+            SELECT book_instances.book_instance_id, book_instances.storage_shelf, book_instances.availability, book_instances.publisher, book_instances.year
+            FROM book_instances
+            WHERE book_instances.book_id = ?
+        """, (book_id,))
+        instances = cursor.fetchall()
+
+        # Если экземпляры найдены
+        if instances:
+            instances_listbox = Listbox(instances_window, width=60, height=15)
+            instances_listbox.pack(pady=10)
+
+            for instance in instances:
+                instance_id, storage_shelf, availability, publisher, year = instance
+                in_stock = "Доступен" if availability else "Занят"
+                instances_listbox.insert(
+                    END, f"ID экземпляра: {instance_id}, Код хранения: {storage_shelf}, Доступность: {in_stock}, Издательство: {publisher}, Год издания: {year}"
+                )
+        else:
+            Label(instances_window, text="Нет доступных экземпляров.").pack(pady=10)
+    except Exception as e:
+        messagebox.showerror("Ошибка", f"Произошла ошибка: {e}")
+    finally:
+        conn.close()
+
+
+
 def search_items(search_window):
     def execute_search():
         conn = sqlite3.connect('library.db')
@@ -182,7 +229,7 @@ def search_items(search_window):
         finally:
             conn.close()
 
-
+    
     # Создание окна поиска
     search_window.title("Поиск книг и журналов")
     search_window.geometry("1000x1000")
@@ -209,6 +256,7 @@ def search_items(search_window):
 
     # Поле вывода результатов
     results_listbox = Listbox(search_window, width=80, height=15)
+    results_listbox.bind("<Double-Button-1>", lambda event: show_book_instances(event, results_listbox))
     results_listbox.pack(pady=10)
 
     # Кнопка для закрытия окна поиска
