@@ -183,8 +183,6 @@ def search_items(search_window):
             conn.close()
 
 
-
-
     # Создание окна поиска
     search_window.title("Поиск книг и журналов")
     search_window.geometry("1000x1000")
@@ -258,7 +256,7 @@ def open_login_window():
     create_rounded_button(login_window, text="Войти", command=on_login).pack(pady=10)
 
 def open_user_dashboard(reader_id):
-    def update_user_information(reader_id):
+    def update_user_information():
         conn = sqlite3.connect('library.db')
         cursor = conn.cursor()
 
