@@ -174,9 +174,6 @@ def show_instances(event, results_listbox):
     finally:
         conn.close()
 
-
-
-
 def search_items(search_window):
     def execute_search():
         conn = sqlite3.connect('library.db')
@@ -446,12 +443,17 @@ def open_user_dashboard(reader_id):
     create_rounded_button(user_window, text="Выйти", command=user_window.destroy).pack(pady=5)
 
 
-
 def open_admin_dashboard(reader_id):
-    # Здесь будет код для отображения главной страницы администратора (например, управление книгами)
-    pass
+    admin_window = Toplevel(root)
+    configure_theme(admin_window)
+    admin_window.title("Личный кабинет")
+    admin_window.geometry("400x1000")
 
-
+    search_button = create_rounded_button(admin_window, text="Поиск книг/журналов", command=lambda: search_items(Toplevel(admin_window)))
+    search_button.pack(pady=10)
+    # Кнопка для выхода
+    create_rounded_button(admin_window, text="Выйти", command=admin_window.destroy).pack(pady=5)
+    
 
 def main_window():
     create_rounded_label(root, text="Library App").pack(pady=10)
