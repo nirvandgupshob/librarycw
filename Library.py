@@ -106,6 +106,98 @@ def initialize_database():
     conn.commit()
     conn.close()
 
+def join_queue_window():
+    queue_window = Toplevel(root)
+    configure_theme(queue_window)
+    queue_window.title("Запись в очередь")
+    queue_window.geometry("400x300")
+
+    # Выбор типа экземпляра (книга или журнал)
+    Label(queue_window, text="Выберите тип экземпляра:").pack(pady=5)
+    instance_type = StringVar(value="book")
+    Radiobutton(queue_window, text="Книга", variable=instance_type, value="book").pack(pady=5)
+    Radiobutton(queue_window, text="Журнал", variable=instance_type, value="journal").pack(pady=5)
+
+    # Поле для ввода ID экземпляра
+    Label(queue_window, text="Введите ID экземпляра:").pack(pady=5)
+    instance_id_entry = Entry(queue_window)
+    instance_id_entry.pack(pady=5)
+
+    # Поле для ввода ID читателя
+    Label(queue_window, text="Введите ID читателя:").pack(pady=5)
+    reader_id_entry = Entry(queue_window)
+    reader_id_entry.pack(pady=5)
+
+    # Функция для добавления в очередь
+    def add_to_queue():
+        instance_id = instance_id_entry.get().strip()
+        reader_id = reader_id_entry.get().strip()
+
+        if not instance_id or not reader_id:
+            messagebox.showerror("Ошибка", "Пожалуйста, заполните все поля.")
+            return
+
+        if not instance_id.isdigit() or not reader_id.isdigit():
+            messagebox.showerror("Ошибка", "ID экземпляра и ID читателя должны быть числами.")
+            return
+
+        conn = sqlite3.connect('library.db')
+        cursor = conn.cursor()
+
+        try:
+            # Проверяем существование экземпляра книги или журнала
+            if instance_type.get() == "book":
+                cursor.execute("SELECT 1 FROM book_instances WHERE book_instance_id = ?", (instance_id,))
+            elif instance_type.get() == "journal":
+                cursor.execute("SELECT 1 FROM journals WHERE journal_id = ?", (instance_id,))
+            else:
+                raise ValueError("Неверный тип экземпляра.")
+
+            if not cursor.fetchone():
+                messagebox.showerror("Ошибка", "Экземпляр с указанным ID не найден.")
+                return
+
+            # Определяем текущее количество людей в очереди
+            if instance_type.get() == "book":
+                cursor.execute("""
+                    SELECT COUNT(*) FROM queues WHERE book_instance_id = ?
+                """, (instance_id,))
+            elif instance_type.get() == "journal":
+                cursor.execute("""
+                    SELECT COUNT(*) FROM queues WHERE journal_id = ?
+                """, (instance_id,))
+            
+            queue_count = cursor.fetchone()[0]
+            new_position = queue_count + 1
+
+            # Добавляем читателя в очередь
+            if instance_type.get() == "book":
+                cursor.execute("""
+                    INSERT INTO queues (reader_id, book_instance_id, journal_id, queue_position, request_status)
+                    VALUES (?, ?, NULL, ?, 0)
+                """, (reader_id, instance_id, new_position))
+            elif instance_type.get() == "journal":
+                cursor.execute("""
+                    INSERT INTO queues (reader_id, book_instance_id, journal_id, queue_position, request_status)
+                    VALUES (?, NULL, ?, ?, 0)
+                """, (reader_id, instance_id, new_position))
+
+            conn.commit()
+            messagebox.showinfo("Успех", f"Читатель добавлен в очередь на позицию {new_position}.")
+            queue_window.destroy()
+
+        except sqlite3.Error as e:
+            messagebox.showerror("Ошибка", f"Не удалось добавить в очередь: {e}")
+        finally:
+            conn.close()
+
+    # Кнопка добавления в очередь
+    Button(queue_window, text="Встать в очередь", command=add_to_queue).pack(pady=20)
+
+    # Кнопка закрытия окна
+    Button(queue_window, text="Закрыть", command=queue_window.destroy).pack(pady=5)
+
+
 def show_queue_window():
     queue_window = Toplevel(root)
     configure_theme(queue_window)
@@ -599,6 +691,8 @@ def open_user_dashboard(reader_id):
     search_button = create_rounded_button(user_window, text="Поиск книг/журналов", command=lambda: search_items(Toplevel(user_window)))
     search_button.pack(pady=10)
     create_rounded_button(user_window, text="Просмотреть очередь", command=show_queue_window).pack(pady=10)
+    create_rounded_button(user_window, text="Записаться в очередь", command=join_queue_window).pack(pady=10)
+
 
     # Обновление информации о пользователе
     update_user_information()
@@ -636,10 +730,7 @@ if __name__ == "__main__":
 '''
 Добавить:
 
-Встать в очередь на литературу через библиотекаря
-Возможность просмотра очереди на книгу или журнал для читателя и библиотекаря
-
-
+Встать в очередь на литературу
 
 
 '''
