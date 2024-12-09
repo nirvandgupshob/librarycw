@@ -322,15 +322,24 @@ def issue_window():
             conn = sqlite3.connect('library.db')
             cursor = conn.cursor()
 
+            # Проверяем существование экземпляра и его доступность
             if is_book:
-                # Проверяем существование экземпляра книги
-                cursor.execute("SELECT 1 FROM book_instances WHERE book_instance_id = ?", (instance_id,))
+                cursor.execute("""
+                    SELECT availability FROM book_instances WHERE book_instance_id = ?
+                """, (instance_id,))
             else:
-                # Проверяем существование журнала
-                cursor.execute("SELECT 1 FROM journals WHERE journal_id = ?", (instance_id,))
+                cursor.execute("""
+                    SELECT availability FROM journals WHERE journal_id = ?
+                """, (instance_id,))
             
-            if not cursor.fetchone():
+            result = cursor.fetchone()
+            if not result:
                 messagebox.showerror("Ошибка", "Экземпляр с указанным ID не найден.")
+                return
+
+            availability = result[0]
+            if not availability:
+                messagebox.showerror("Ошибка", "Этот экземпляр уже выдан.")
                 return
 
             # Вставка данных в таблицу loans
@@ -344,6 +353,17 @@ def issue_window():
                 issue_date,
                 due_date,
             ))
+
+            # Обновление статуса доступности экземпляра
+            if is_book:
+                cursor.execute("""
+                    UPDATE book_instances SET availability = 0 WHERE book_instance_id = ?
+                """, (instance_id,))
+            else:
+                cursor.execute("""
+                    UPDATE journals SET availability = 0 WHERE journal_id = ?
+                """, (instance_id,))
+
             conn.commit()
 
             messagebox.showinfo("Успех", "Выдача успешно зарегистрирована.")
@@ -729,8 +749,7 @@ if __name__ == "__main__":
 
 '''
 Добавить:
-
-Встать в очередь на литературу
-
+Реализовать в выдаче, чтобы книга становилась занятой при выдаче
+Реализовать возврат книги через библиотекаря, очередь продвигается
 
 '''
