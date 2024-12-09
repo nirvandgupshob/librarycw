@@ -66,8 +66,9 @@ def second_amendment():
     conn = sqlite3.connect('library.db')
     cursor = conn.cursor()
     cursor.execute("""
-                    UPDATE book_instances SET availability = 1 WHERE book_instance_id = 2
-                    """,)
+    INSERT INTO loans (reader_id, book_instance_id, issue_date, due_date)
+    VALUES (?, ?, ?, ?)
+""", (1, 3, '2024-10-06', '2024-10-20'))
     conn.commit()
     conn.close()
 

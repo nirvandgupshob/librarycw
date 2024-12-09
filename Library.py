@@ -170,19 +170,32 @@ def return_window():
             # Проверяем, есть ли очередь на этот экземпляр
             if is_book:
                 cursor.execute("""
-                    SELECT 1 FROM queues
+                    SELECT reader_id FROM queues
                     WHERE book_instance_id = ?
+                    ORDER BY queue_position ASC LIMIT 1
                 """, (instance_id,))
             else:
                 cursor.execute("""
-                    SELECT 1 FROM queues
+                    SELECT reader_id FROM queues
                     WHERE journal_id = ?
+                    ORDER BY queue_position ASC LIMIT 1
                 """, (instance_id,))
             
-            queue_exists = cursor.fetchone()
+            first_in_queue = cursor.fetchone()
 
-            # Если очереди нет, отмечаем экземпляр как доступный
-            if not queue_exists:
+            if first_in_queue:
+                reader_id = first_in_queue[0]
+
+                # Получаем телефон читателя
+                cursor.execute("""
+                    SELECT phone_number FROM readers WHERE reader_id = ?
+                """, (reader_id,))
+                reader_info = cursor.fetchone()
+                phone = reader_info[0] if reader_info else "не указан"
+
+                messagebox.showinfo("Очередь", f"Первый в очереди: reader_id = {reader_id}, телефон = {phone}")
+            else:
+                # Если очереди нет, помечаем экземпляр как доступный
                 if is_book:
                     cursor.execute("""
                         UPDATE book_instances
@@ -857,4 +870,5 @@ if __name__ == "__main__":
 Выдача книги:
 Если есть очередь на книгу, то проверяется, первый ли в очереди пришедший читатель, если нет, то проверяется прошло ли 7 дней с
  момента возврата этой книги, если прошло, то первый в очереди удаляется и первым становится второй (????????)
+Убрать из очереди того, кто получил книгу -> продвинуть очередь
 '''
