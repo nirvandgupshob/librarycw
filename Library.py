@@ -82,7 +82,6 @@ def initialize_database():
             book_instance_id INTEGER DEFAULT NULL,
             journal_id INTEGER DEFAULT NULL,
             queue_position INTEGER NOT NULL,
-            request_status BOOLEAN NOT NULL DEFAULT 0,
             FOREIGN KEY (reader_id) REFERENCES readers(reader_id) ON DELETE CASCADE,
             FOREIGN KEY (book_instance_id) REFERENCES book_instances(book_instance_id) ON DELETE CASCADE,
             FOREIGN KEY (journal_id) REFERENCES journals(journal_id) ON DELETE CASCADE
@@ -222,7 +221,8 @@ def return_window():
     Button(return_window, text="Оформить возврат", command=process_return).pack(pady=20)
 
 
-def join_queue_window():
+def join_queue_window(current_reader_id):
+
     queue_window = Toplevel(root)
     configure_theme(queue_window)
     queue_window.title("Запись в очередь")
@@ -239,22 +239,12 @@ def join_queue_window():
     instance_id_entry = Entry(queue_window)
     instance_id_entry.pack(pady=5)
 
-    # Поле для ввода ID читателя
-    Label(queue_window, text="Введите ID читателя:").pack(pady=5)
-    reader_id_entry = Entry(queue_window)
-    reader_id_entry.pack(pady=5)
-
     # Функция для добавления в очередь
     def add_to_queue():
         instance_id = instance_id_entry.get().strip()
-        reader_id = reader_id_entry.get().strip()
 
-        if not instance_id or not reader_id:
-            messagebox.showerror("Ошибка", "Пожалуйста, заполните все поля.")
-            return
-
-        if not instance_id.isdigit() or not reader_id.isdigit():
-            messagebox.showerror("Ошибка", "ID экземпляра и ID читателя должны быть числами.")
+        if not instance_id:
+            messagebox.showerror("Ошибка", "Пожалуйста, заполните поле.")
             return
 
         conn = sqlite3.connect('library.db')
@@ -289,14 +279,14 @@ def join_queue_window():
             # Добавляем читателя в очередь
             if instance_type.get() == "book":
                 cursor.execute("""
-                    INSERT INTO queues (reader_id, book_instance_id, journal_id, queue_position, request_status)
-                    VALUES (?, ?, NULL, ?, 0)
-                """, (reader_id, instance_id, new_position))
+                    INSERT INTO queues (reader_id, book_instance_id, journal_id, queue_position)
+                    VALUES (?, ?, NULL, ?)
+                """, (current_reader_id, instance_id, new_position))
             elif instance_type.get() == "journal":
                 cursor.execute("""
-                    INSERT INTO queues (reader_id, book_instance_id, journal_id, queue_position, request_status)
-                    VALUES (?, NULL, ?, ?, 0)
-                """, (reader_id, instance_id, new_position))
+                    INSERT INTO queues (reader_id, book_instance_id, journal_id, queue_position)
+                    VALUES (?, NULL, ?, ?)
+                """, (current_reader_id, instance_id, new_position))
 
             conn.commit()
             messagebox.showinfo("Успех", f"Читатель добавлен в очередь на позицию {new_position}.")
@@ -312,6 +302,8 @@ def join_queue_window():
 
     # Кнопка закрытия окна
     Button(queue_window, text="Закрыть", command=queue_window.destroy).pack(pady=5)
+
+
 
 
 def show_queue_window():
@@ -345,14 +337,14 @@ def show_queue_window():
         try:
             if instance_type.get() == "book":
                 cursor.execute("""
-                    SELECT queue_position, reader_id, request_status
+                    SELECT queue_position, reader_id
                     FROM queues
                     WHERE book_instance_id = ?
                     ORDER BY queue_position
                 """, (instance_id,))
             elif instance_type.get() == "journal":
                 cursor.execute("""
-                    SELECT queue_position, reader_id, request_status
+                    SELECT queue_position, reader_id
                     FROM queues
                     WHERE journal_id = ?
                     ORDER BY queue_position
@@ -362,9 +354,11 @@ def show_queue_window():
 
             queue = cursor.fetchall()
 
-            # Очистка старых результатов (если есть)
+            # Удаляем все виджеты с текстом "Очередь:" и Listbox
             for widget in queue_window.pack_slaves():
-                if isinstance(widget, Listbox):
+                if isinstance(widget, Label) and widget.cget("text") == "Очередь:":
+                    widget.destroy()
+                elif isinstance(widget, Listbox):
                     widget.destroy()
 
             if queue:
@@ -374,10 +368,9 @@ def show_queue_window():
                 queue_listbox = Listbox(queue_window, width=60, height=15)
                 queue_listbox.pack(pady=10)
 
-                for position, reader_id, status in queue:
-                    status_text = "Обработана" if status else "В ожидании"
+                for position, reader_id in queue:
                     queue_listbox.insert(
-                        END, f"Позиция: {position}, ID Читателя: {reader_id}, Статус: {status_text}"
+                        END, f"Позиция: {position}, ID Читателя: {reader_id}"
                     )
             else:
                 messagebox.showinfo("Очередь", "Очередь отсутствует.")
@@ -880,7 +873,8 @@ def open_user_dashboard(reader_id):
     search_button = create_rounded_button(user_window, text="Поиск книг/журналов", command=lambda: search_items(Toplevel(user_window)))
     search_button.pack(pady=10)
     create_rounded_button(user_window, text="Просмотреть очередь", command=show_queue_window).pack(pady=10)
-    create_rounded_button(user_window, text="Записаться в очередь", command=join_queue_window).pack(pady=10)
+    create_rounded_button(user_window, text="Записаться в очередь", command=lambda: join_queue_window(reader_id)).pack(pady=10)
+
 
 
     # Обновление информации о пользователе
@@ -920,7 +914,7 @@ if __name__ == "__main__":
 '''
 Добавить:
 Внесение новой книги и журнала в базу данных
-Возврат вроде сделали
-Выдача книги:
-Убрать из очереди того, кто получил книгу -> продвинуть очередь
+Штрафы обдумать
+Проверить очереди
+
 '''
