@@ -438,25 +438,79 @@ def issue_window():
             conn = sqlite3.connect('library.db')
             cursor = conn.cursor()
 
-            # Проверяем существование экземпляра и его доступность
+            # Проверяем очередь на экземпляр
             if is_book:
                 cursor.execute("""
-                    SELECT availability FROM book_instances WHERE book_instance_id = ?
+                    SELECT reader_id FROM queues
+                    WHERE book_instance_id = ?
+                    ORDER BY queue_position ASC LIMIT 1
                 """, (instance_id,))
             else:
                 cursor.execute("""
-                    SELECT availability FROM journals WHERE journal_id = ?
+                    SELECT reader_id FROM queues
+                    WHERE journal_id = ?
+                    ORDER BY queue_position ASC LIMIT 1
                 """, (instance_id,))
             
-            result = cursor.fetchone()
-            if not result:
-                messagebox.showerror("Ошибка", "Экземпляр с указанным ID не найден.")
-                return
+            first_in_queue = cursor.fetchone()
 
-            availability = result[0]
-            if not availability:
-                messagebox.showerror("Ошибка", "Этот экземпляр уже выдан.")
-                return
+            if first_in_queue:
+                queue_reader_id = first_in_queue[0]
+
+                # Проверяем, совпадает ли reader_id с первым в очереди
+                if int(reader_id) != queue_reader_id:
+                    messagebox.showerror(
+                        "Ошибка", 
+                        "На данный экземпляр есть очередь. Выдача возможна только первому в очереди."
+                    )
+                    return
+                
+                # Удаляем запись очереди первого читателя
+                if is_book:
+                    cursor.execute("""
+                        DELETE FROM queues
+                        WHERE book_instance_id = ? AND reader_id = ?
+                    """, (instance_id, reader_id))
+                else:
+                    cursor.execute("""
+                        DELETE FROM queues
+                        WHERE journal_id = ? AND reader_id = ?
+                    """, (instance_id, reader_id))
+                
+                # Сдвигаем очередь
+                if is_book:
+                    cursor.execute("""
+                        UPDATE queues
+                        SET queue_position = queue_position - 1
+                        WHERE book_instance_id = ?
+                    """, (instance_id,))
+                else:
+                    cursor.execute("""
+                        UPDATE queues
+                        SET queue_position = queue_position - 1
+                        WHERE journal_id = ?
+                    """, (instance_id,))
+
+            else:
+                # Проверяем доступность экземпляра, если очереди нет
+                if is_book:
+                    cursor.execute("""
+                        SELECT availability FROM book_instances WHERE book_instance_id = ?
+                    """, (instance_id,))
+                else:
+                    cursor.execute("""
+                        SELECT availability FROM journals WHERE journal_id = ?
+                    """, (instance_id,))
+                
+                result = cursor.fetchone()
+                if not result:
+                    messagebox.showerror("Ошибка", "Экземпляр с указанным ID не найден.")
+                    return
+
+                availability = result[0]
+                if not availability:
+                    messagebox.showerror("Ошибка", "Этот экземпляр уже выдан.")
+                    return
 
             # Вставка данных в таблицу loans
             cursor.execute("""
@@ -492,7 +546,6 @@ def issue_window():
 
     # Кнопка сохранения
     Button(issue_window, text="Зарегистрировать выдачу", command=save_loan).pack(pady=20)
-
 
 
 def show_instances(event, results_listbox):
@@ -867,8 +920,7 @@ if __name__ == "__main__":
 '''
 Добавить:
 Внесение новой книги и журнала в базу данных
+Возврат вроде сделали
 Выдача книги:
-Если есть очередь на книгу, то проверяется, первый ли в очереди пришедший читатель, если нет, то проверяется прошло ли 7 дней с
- момента возврата этой книги, если прошло, то первый в очереди удаляется и первым становится второй (????????)
 Убрать из очереди того, кто получил книгу -> продвинуть очередь
 '''
