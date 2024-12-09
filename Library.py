@@ -2,6 +2,7 @@ import sqlite3
 from tkinter import Tk, Toplevel, Label, Listbox, messagebox, END, StringVar, OptionMenu, Entry, Button, Radiobutton
 from interface import configure_theme, create_rounded_entry, create_rounded_button, create_rounded_label
 from customtkinter import CTk
+from datetime import datetime
 
 
 def initialize_database():
@@ -105,11 +106,90 @@ def initialize_database():
     conn.commit()
     conn.close()
 
+def show_queue_window():
+    queue_window = Toplevel(root)
+    configure_theme(queue_window)
+    queue_window.title("Очередь")
+    queue_window.geometry("500x400")
+
+    # Выбор типа экземпляра (книга или журнал)
+    Label(queue_window, text="Выберите тип экземпляра:").pack(pady=5)
+    instance_type = StringVar(value="book")
+    Radiobutton(queue_window, text="Книга", variable=instance_type, value="book").pack(pady=5)
+    Radiobutton(queue_window, text="Журнал", variable=instance_type, value="journal").pack(pady=5)
+
+    # Поле для ввода ID экземпляра
+    Label(queue_window, text="Введите ID экземпляра:").pack(pady=5)
+    instance_id_entry = Entry(queue_window)
+    instance_id_entry.pack(pady=5)
+
+    # Функция для отображения очереди
+    def display_queue():
+        instance_id = instance_id_entry.get().strip()
+
+        if not instance_id.isdigit():
+            messagebox.showerror("Ошибка", "ID экземпляра должен быть числом.")
+            return
+
+        conn = sqlite3.connect('library.db')
+        cursor = conn.cursor()
+
+        try:
+            if instance_type.get() == "book":
+                cursor.execute("""
+                    SELECT queue_position, reader_id, request_status
+                    FROM queues
+                    WHERE book_instance_id = ?
+                    ORDER BY queue_position
+                """, (instance_id,))
+            elif instance_type.get() == "journal":
+                cursor.execute("""
+                    SELECT queue_position, reader_id, request_status
+                    FROM queues
+                    WHERE journal_id = ?
+                    ORDER BY queue_position
+                """, (instance_id,))
+            else:
+                raise ValueError("Неверный тип экземпляра.")
+
+            queue = cursor.fetchall()
+
+            # Очистка старых результатов (если есть)
+            for widget in queue_window.pack_slaves():
+                if isinstance(widget, Listbox):
+                    widget.destroy()
+
+            if queue:
+                Label(queue_window, text="Очередь:").pack(pady=10)
+
+                # Отображение очереди в Listbox
+                queue_listbox = Listbox(queue_window, width=60, height=15)
+                queue_listbox.pack(pady=10)
+
+                for position, reader_id, status in queue:
+                    status_text = "Обработана" if status else "В ожидании"
+                    queue_listbox.insert(
+                        END, f"Позиция: {position}, ID Читателя: {reader_id}, Статус: {status_text}"
+                    )
+            else:
+                messagebox.showinfo("Очередь", "Очередь отсутствует.")
+        except sqlite3.Error as e:
+            messagebox.showerror("Ошибка", f"Не удалось загрузить очередь: {e}")
+        finally:
+            conn.close()
+
+    # Кнопка для отображения очереди
+    Button(queue_window, text="Показать очередь", command=display_queue).pack(pady=10)
+
+    # Кнопка закрытия окна
+    Button(queue_window, text="Закрыть", command=queue_window.destroy).pack(pady=5)
+
+
 def issue_window():
     issue_window = Toplevel(root)
     configure_theme(issue_window)
     issue_window.title("Выдача экземпляра")
-    issue_window.geometry("400x500")
+    issue_window.geometry("400x400")
 
     # Выбор: книга или журнал
     selection_label = Label(issue_window, text="Выберите тип выдачи:")
@@ -128,10 +208,6 @@ def issue_window():
     reader_id_entry = Entry(issue_window)
     reader_id_entry.pack(pady=5)
 
-    Label(issue_window, text="Дата выдачи (ГГГГ-ММ-ДД):").pack(pady=5)
-    issue_date_entry = Entry(issue_window)
-    issue_date_entry.pack(pady=5)
-
     Label(issue_window, text="Срок возврата (ГГГГ-ММ-ДД):").pack(pady=5)
     due_date_entry = Entry(issue_window)
     due_date_entry.pack(pady=5)
@@ -140,13 +216,15 @@ def issue_window():
     def save_loan():
         instance_id = instance_id_entry.get().strip()
         reader_id = reader_id_entry.get().strip()
-        issue_date = issue_date_entry.get().strip()
         due_date = due_date_entry.get().strip()
         is_book = issue_type.get() == "book"
 
-        if not instance_id or not reader_id or not issue_date or not due_date:
+        if not instance_id or not reader_id or not due_date:
             messagebox.showerror("Ошибка", "Пожалуйста, заполните все обязательные поля.")
             return
+
+        # Получение текущей даты
+        issue_date = datetime.now().strftime("%Y-%m-%d")
 
         try:
             conn = sqlite3.connect('library.db')
@@ -186,6 +264,7 @@ def issue_window():
 
     # Кнопка сохранения
     Button(issue_window, text="Зарегистрировать выдачу", command=save_loan).pack(pady=20)
+
 
 
 def show_instances(event, results_listbox):
@@ -508,7 +587,7 @@ def open_user_dashboard(reader_id):
     user_window = Toplevel(root)
     configure_theme(user_window)
     user_window.title("Личный кабинет")
-    user_window.geometry("400x1300")
+    user_window.geometry("400x1000")
 
     # Метки для отображения информации
     name_label = create_rounded_label(user_window, text="Загрузка...")  # Заглушка до обновления данных
@@ -519,6 +598,8 @@ def open_user_dashboard(reader_id):
     fines_label.pack(pady=5)
     search_button = create_rounded_button(user_window, text="Поиск книг/журналов", command=lambda: search_items(Toplevel(user_window)))
     search_button.pack(pady=10)
+    create_rounded_button(user_window, text="Просмотреть очередь", command=show_queue_window).pack(pady=10)
+
     # Обновление информации о пользователе
     update_user_information()
 
@@ -535,6 +616,7 @@ def open_admin_dashboard(reader_id):
     search_button = create_rounded_button(admin_window, text="Поиск книг/журналов", command=lambda: search_items(Toplevel(admin_window)))
     search_button.pack(pady=10)
     create_rounded_button(admin_window, text="Выдача книги", command=issue_window).pack(pady=10)
+    create_rounded_button(admin_window, text="Просмотреть очередь", command=show_queue_window).pack(pady=10)
     # Кнопка для выхода
     create_rounded_button(admin_window, text="Выйти", command=admin_window.destroy).pack(pady=5)
     
@@ -555,7 +637,7 @@ if __name__ == "__main__":
 Добавить:
 
 Встать в очередь на литературу через библиотекаря
-Оформление выдачи через библиотекаря
+Возможность просмотра очереди на книгу или журнал для читателя и библиотекаря
 
 
 
