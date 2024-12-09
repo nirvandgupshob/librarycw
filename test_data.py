@@ -61,5 +61,14 @@ def populate_test_data():
     conn.close()
     print("Тестовые данные успешно добавлены!")
 
-populate_test_data()
+# populate_test_data()
+def second_amendment():
+    conn = sqlite3.connect('library.db')
+    cursor = conn.cursor()
+    cursor.execute("""
+                    UPDATE book_instances SET availability = 1 WHERE book_instance_id = 2
+                    """,)
+    conn.commit()
+    conn.close()
 
+second_amendment()

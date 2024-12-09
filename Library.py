@@ -106,6 +106,109 @@ def initialize_database():
     conn.commit()
     conn.close()
 
+def return_window():
+    return_window = Toplevel(root)
+    configure_theme(return_window)
+    return_window.title("Возврат экземпляра")
+    return_window.geometry("400x400")
+
+    # Выбор: книга или журнал
+    selection_label = Label(return_window, text="Выберите тип возврата:")
+    selection_label.pack(pady=5)
+
+    return_type = StringVar(value="book")
+    Radiobutton(return_window, text="Книга", variable=return_type, value="book").pack(pady=10)
+    Radiobutton(return_window, text="Журнал", variable=return_type, value="journal").pack(pady=10)
+
+    # Поле для ввода ID
+    Label(return_window, text="ID экземпляра (книга) / ID журнала:").pack(pady=5)
+    instance_id_entry = Entry(return_window)
+    instance_id_entry.pack(pady=5)
+
+    # Функция возврата
+    def process_return():
+        instance_id = instance_id_entry.get().strip()
+        is_book = return_type.get() == "book"
+
+        if not instance_id:
+            messagebox.showerror("Ошибка", "Пожалуйста, введите ID экземпляра.")
+            return
+
+        # Получение текущей даты
+        actual_date = datetime.now().strftime("%Y-%m-%d")
+
+        try:
+            conn = sqlite3.connect('library.db')
+            cursor = conn.cursor()
+
+            # Проверяем, есть ли активная выдача для указанного экземпляра
+            if is_book:
+                cursor.execute("""
+                    SELECT loan_id FROM loans
+                    WHERE book_instance_id = ? AND actual_date IS NULL
+                """, (instance_id,))
+            else:
+                cursor.execute("""
+                    SELECT loan_id FROM loans
+                    WHERE journal_id = ? AND actual_date IS NULL
+                """, (instance_id,))
+            
+            loan = cursor.fetchone()
+            if not loan:
+                messagebox.showerror("Ошибка", "Для этого экземпляра нет активной выдачи.")
+                return
+
+            loan_id = loan[0]
+
+            # Обновляем дату возврата
+            cursor.execute("""
+                UPDATE loans
+                SET actual_date = ?
+                WHERE loan_id = ?
+            """, (actual_date, loan_id))
+
+            # Проверяем, есть ли очередь на этот экземпляр
+            if is_book:
+                cursor.execute("""
+                    SELECT 1 FROM queues
+                    WHERE book_instance_id = ?
+                """, (instance_id,))
+            else:
+                cursor.execute("""
+                    SELECT 1 FROM queues
+                    WHERE journal_id = ?
+                """, (instance_id,))
+            
+            queue_exists = cursor.fetchone()
+
+            # Если очереди нет, отмечаем экземпляр как доступный
+            if not queue_exists:
+                if is_book:
+                    cursor.execute("""
+                        UPDATE book_instances
+                        SET availability = 1
+                        WHERE book_instance_id = ?
+                    """, (instance_id,))
+                else:
+                    cursor.execute("""
+                        UPDATE journals
+                        SET availability = 1
+                        WHERE journal_id = ?
+                    """, (instance_id,))
+            
+            conn.commit()
+            messagebox.showinfo("Успех", "Возврат успешно оформлен.")
+            return_window.destroy()
+
+        except sqlite3.Error as e:
+            messagebox.showerror("Ошибка", f"Не удалось оформить возврат: {e}")
+        finally:
+            conn.close()
+
+    # Кнопка для оформления возврата
+    Button(return_window, text="Оформить возврат", command=process_return).pack(pady=20)
+
+
 def join_queue_window():
     queue_window = Toplevel(root)
     configure_theme(queue_window)
@@ -731,6 +834,7 @@ def open_admin_dashboard(reader_id):
     search_button.pack(pady=10)
     create_rounded_button(admin_window, text="Выдача книги", command=issue_window).pack(pady=10)
     create_rounded_button(admin_window, text="Просмотреть очередь", command=show_queue_window).pack(pady=10)
+    create_rounded_button(admin_window, text="Возврат книги", command=return_window).pack(pady=10)
     # Кнопка для выхода
     create_rounded_button(admin_window, text="Выйти", command=admin_window.destroy).pack(pady=5)
     
@@ -749,7 +853,8 @@ if __name__ == "__main__":
 
 '''
 Добавить:
-Реализовать в выдаче, чтобы книга становилась занятой при выдаче
-Реализовать возврат книги через библиотекаря, очередь продвигается
-
+Внесение новой книги и журнала в базу данных
+Выдача книги:
+Если есть очередь на книгу, то проверяется, первый ли в очереди пришедший читатель, если нет, то проверяется прошло ли 7 дней с
+ момента возврата этой книги, если прошло, то первый в очереди удаляется и первым становится второй (????????)
 '''
