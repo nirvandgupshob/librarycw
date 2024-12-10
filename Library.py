@@ -105,6 +105,208 @@ def initialize_database():
     conn.commit()
     conn.close()
 
+def pay_fine_window():
+    """
+    Открывает окно для погашения штрафов читателя.
+    """
+    pay_fine_main_window = Toplevel(root)
+    configure_theme(pay_fine_main_window)
+    pay_fine_main_window.title("Погашение штрафов")
+    pay_fine_main_window.geometry("400x400")
+
+    # Поле для ввода ID читателя
+    Label(pay_fine_main_window, text="Введите ID читателя:").pack(pady=5)
+    reader_id_entry = Entry(pay_fine_main_window)
+    reader_id_entry.pack(pady=5)
+
+    # Listbox для отображения штрафов
+    fines_listbox = Listbox(pay_fine_main_window, width=50, height=15)
+    fines_listbox.pack(pady=10)
+
+    # Функция для загрузки штрафов
+    def load_fines():
+        reader_id = reader_id_entry.get().strip()
+
+        if not reader_id:
+            messagebox.showerror("Ошибка", "Пожалуйста, введите ID читателя.")
+            return
+
+        if not reader_id.isdigit():
+            messagebox.showerror("Ошибка", "ID читателя должен быть целым числом.")
+            return
+
+        conn = sqlite3.connect('library.db')
+        cursor = conn.cursor()
+
+        try:
+            # Проверка существования читателя
+            cursor.execute("SELECT 1 FROM readers WHERE reader_id = ?", (reader_id,))
+            if not cursor.fetchone():
+                messagebox.showerror("Ошибка", "Читатель с указанным ID не найден.")
+                return
+
+            # Загрузка штрафов для указанного читателя
+            cursor.execute("""
+                SELECT fine_id, reason, amount, status, fine_date 
+                FROM fines 
+                WHERE reader_id = ? AND status = 0
+            """, (reader_id,))
+            fines = cursor.fetchall()
+
+            fines_listbox.delete(0, END)  # Очистка списка
+            if fines:
+                for fine in fines:
+                    fines_listbox.insert(END, f"ID: {fine[0]} | Причина: {fine[1]} | Сумма: {fine[2]} | Дата: {fine[4]}")
+            else:
+                messagebox.showinfo("Информация", "Нет неоплаченных штрафов для данного читателя.")
+
+        except sqlite3.Error as e:
+            messagebox.showerror("Ошибка", f"Не удалось загрузить штрафы: {e}")
+        finally:
+            conn.close()
+
+    # Функция для погашения конкретного штрафа
+    def pay_selected_fine(fine_id):
+        def confirm_payment():
+            conn = sqlite3.connect('library.db')
+            cursor = conn.cursor()
+            try:
+                cursor.execute("""
+                    UPDATE fines 
+                    SET status = 1 
+                    WHERE fine_id = ?
+                """, (fine_id,))
+                conn.commit()
+                messagebox.showinfo("Успех", "Штраф успешно погашен.")
+                fine_payment_window.destroy()
+                load_fines()  # Обновить список штрафов
+            except sqlite3.Error as e:
+                messagebox.showerror("Ошибка", f"Не удалось погасить штраф: {e}")
+            finally:
+                conn.close()
+
+        # Открытие окна для подтверждения погашения
+        fine_payment_window = Toplevel(pay_fine_main_window)
+        configure_theme(fine_payment_window)
+        fine_payment_window.title("Подтверждение погашения штрафа")
+        fine_payment_window.geometry("300x150")
+
+        Label(fine_payment_window, text=f"Вы уверены, что хотите погасить штраф ID {fine_id}?").pack(pady=10)
+        Button(fine_payment_window, text="Подтвердить", command=confirm_payment).pack(pady=5)
+        Button(fine_payment_window, text="Отмена", command=fine_payment_window.destroy).pack(pady=5)
+
+    # Обработка двойного клика на элементе списка
+    def on_fine_double_click(event):
+        selection = fines_listbox.curselection()
+        if not selection:
+            return
+
+        selected_fine = fines_listbox.get(selection[0])
+        fine_id = int(selected_fine.split('|')[0].split(':')[1].strip())  # Извлекаем ID штрафа
+        pay_selected_fine(fine_id)
+
+    fines_listbox.bind("<Double-1>", on_fine_double_click)
+
+    # Кнопка загрузки штрафов
+    Button(pay_fine_main_window, text="Загрузить штрафы", command=load_fines).pack(pady=10)
+
+    # Кнопка для закрытия окна
+    Button(pay_fine_main_window, text="Закрыть", command=pay_fine_main_window.destroy).pack(pady=5)
+
+
+def open_fine_window():
+    """
+    Открывает окно для выписки штрафа читателю.
+    """
+    fine_window = Toplevel(root)
+    configure_theme(fine_window)
+    fine_window.title("Выписать штраф")
+    fine_window.geometry("400x400")
+
+    # Поле для ввода ID читателя
+    Label(fine_window, text="Введите ID читателя:").pack(pady=5)
+    reader_id_entry = Entry(fine_window)
+    reader_id_entry.pack(pady=5)
+
+    # Поле для ввода ID выдачи (loan_id)
+    Label(fine_window, text="Введите ID выдачи (loan_id):").pack(pady=5)
+    loan_id_entry = Entry(fine_window)
+    loan_id_entry.pack(pady=5)
+
+    # Поле для ввода причины штрафа
+    Label(fine_window, text="Введите причину штрафа:").pack(pady=5)
+    reason_entry = Entry(fine_window)
+    reason_entry.pack(pady=5)
+
+    # Поле для ввода суммы штрафа
+    Label(fine_window, text="Введите сумму штрафа:").pack(pady=5)
+    amount_entry = Entry(fine_window)
+    amount_entry.pack(pady=5)
+
+    # Функция для добавления штрафа в базу данных
+    def add_fine():
+        reader_id = reader_id_entry.get().strip()
+        loan_id = loan_id_entry.get().strip()
+        reason = reason_entry.get().strip()
+        amount = amount_entry.get().strip()
+
+        # Проверка на заполнение полей
+        if not reader_id or not loan_id or not reason or not amount:
+            messagebox.showerror("Ошибка", "Пожалуйста, заполните все поля.")
+            return
+
+        # Проверка на корректность суммы
+        try:
+            amount = float(amount)
+            if amount <= 0:
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Ошибка", "Сумма должна быть положительным числом.")
+            return
+
+        # Проверка на целочисленные ID
+        if not reader_id.isdigit() or not loan_id.isdigit():
+            messagebox.showerror("Ошибка", "ID читателя и ID выдачи должны быть целыми числами.")
+            return
+
+        conn = sqlite3.connect('library.db')
+        cursor = conn.cursor()
+
+        try:
+            # Проверка существования reader_id
+            cursor.execute("SELECT 1 FROM readers WHERE reader_id = ?", (reader_id,))
+            if not cursor.fetchone():
+                messagebox.showerror("Ошибка", "Читатель с указанным ID не найден.")
+                return
+
+            # Проверка существования loan_id
+            cursor.execute("SELECT 1 FROM loans WHERE loan_id = ?", (loan_id,))
+            if not cursor.fetchone():
+                messagebox.showerror("Ошибка", "Выдача с указанным ID не найдена.")
+                return
+
+            # Добавление штрафа в таблицу fines
+            cursor.execute("""
+                INSERT INTO fines (reader_id, loan_id, reason, amount, fine_date)
+                VALUES (?, ?, ?, ?, DATE('now'))
+            """, (reader_id, loan_id, reason, amount))
+            conn.commit()
+
+            messagebox.showinfo("Успех", "Штраф успешно выписан.")
+            fine_window.destroy()
+
+        except sqlite3.Error as e:
+            messagebox.showerror("Ошибка", f"Не удалось добавить штраф: {e}")
+        finally:
+            conn.close()
+
+    # Кнопка для добавления штрафа
+    Button(fine_window, text="Выписать штраф", command=add_fine).pack(pady=20)
+
+    # Кнопка для закрытия окна
+    Button(fine_window, text="Закрыть", command=fine_window.destroy).pack(pady=5)
+
+
 def return_window():
     return_window = Toplevel(root)
     configure_theme(return_window)
@@ -895,6 +1097,9 @@ def open_admin_dashboard(reader_id):
     create_rounded_button(admin_window, text="Выдача книги", command=issue_window).pack(pady=10)
     create_rounded_button(admin_window, text="Просмотреть очередь", command=show_queue_window).pack(pady=10)
     create_rounded_button(admin_window, text="Возврат книги", command=return_window).pack(pady=10)
+    create_rounded_button(admin_window, text="Выписать штраф", command=open_fine_window).pack(pady=10)
+    create_rounded_button(admin_window, text="Погасить штраф", command=pay_fine_window).pack(pady=10)
+
     # Кнопка для выхода
     create_rounded_button(admin_window, text="Выйти", command=admin_window.destroy).pack(pady=5)
     
@@ -915,6 +1120,5 @@ if __name__ == "__main__":
 Добавить:
 Внесение новой книги и журнала в базу данных
 Штрафы обдумать
-Проверить очереди
 
 '''

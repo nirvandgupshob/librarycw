@@ -60,5 +60,19 @@ def populate_test_data():
     conn.commit()
     conn.close()
 
-populate_test_data()
+# populate_test_data()
+def fines():
+    conn = sqlite3.connect('library.db')
+    cursor = conn.cursor()
+    cursor.executemany("""
+        INSERT INTO fines (reader_id, reason, amount, fine_date, loan_id)
+        VALUES (?, ?, ?, ?, ?)
+    """, [
+        (1, "по приколу", 100, "2024-07-07", 1),
+    ])
+
+    conn.commit()
+    conn.close()
+
+fines()
 
