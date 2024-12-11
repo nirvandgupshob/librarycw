@@ -1,5 +1,5 @@
 import sqlite3
-from tkinter import Tk, Toplevel, Label, Listbox, messagebox, END, StringVar, OptionMenu, Entry, Button, Radiobutton
+from tkinter import Tk, Toplevel, Label, Listbox, messagebox, END, StringVar, OptionMenu, Entry, Button, Radiobutton, Frame
 from interface import configure_theme, create_rounded_entry, create_rounded_button, create_rounded_label
 from customtkinter import CTk
 from datetime import datetime
@@ -103,6 +103,141 @@ def initialize_database():
     """)
     conn.commit()
     conn.close()
+
+def add_item_window():
+    window = Toplevel(root)
+    configure_theme(window)
+    window.title("Добавление книги или журнала")
+    window.geometry("400x1000")
+
+    # Выбор типа элемента (книга или журнал)
+    Label(window, text="Выберите тип элемента:").pack(pady=5)
+    item_type = StringVar(value="book")
+    Radiobutton(window, text="Книга", variable=item_type, value="book", command=lambda: show_fields("book")).pack()
+    Radiobutton(window, text="Журнал", variable=item_type, value="journal", command=lambda: show_fields("journal")).pack()
+
+    # Фрейм для полей ввода
+    fields_frame = Frame(window)
+    fields_frame.pack(pady=10)
+
+    # Поля ввода
+    fields = {}
+
+    def show_fields(item_type):
+        # Очистка предыдущих полей
+        for widget in fields_frame.winfo_children():
+            widget.destroy()
+
+        fields.clear()
+
+        if item_type == "book":
+            Label(fields_frame, text="Название:").pack(pady=5)
+            fields["title"] = Entry(fields_frame)
+            fields["title"].pack()
+
+            Label(fields_frame, text="Автор:").pack(pady=5)
+            fields["author"] = Entry(fields_frame)
+            fields["author"].pack()
+
+            Label(fields_frame, text="Раздел:").pack(pady=5)
+            fields["section"] = Entry(fields_frame)
+            fields["section"].pack()
+
+            Label(fields_frame, text="Место хранения:").pack(pady=5)
+            fields["storage_shelf"] = Entry(fields_frame)
+            fields["storage_shelf"].pack()
+
+            Label(fields_frame, text="Издатель:").pack(pady=5)
+            fields["publisher"] = Entry(fields_frame)
+            fields["publisher"].pack()
+
+            Label(fields_frame, text="Год издания:").pack(pady=5)
+            fields["year"] = Entry(fields_frame)
+            fields["year"].pack()
+
+        elif item_type == "journal":
+            Label(fields_frame, text="Название:").pack(pady=5)
+            fields["title"] = Entry(fields_frame)
+            fields["title"].pack()
+
+            Label(fields_frame, text="Выпуск:").pack(pady=5)
+            fields["issue"] = Entry(fields_frame)
+            fields["issue"].pack()
+
+            Label(fields_frame, text="Дата публикации (YYYY-MM-DD):").pack(pady=5)
+            fields["publication_date"] = Entry(fields_frame)
+            fields["publication_date"].pack()
+
+            Label(fields_frame, text="Раздел:").pack(pady=5)
+            fields["section"] = Entry(fields_frame)
+            fields["section"].pack()
+
+            Label(fields_frame, text="Код хранения:").pack(pady=5)
+            fields["storage_shelf"] = Entry(fields_frame)
+            fields["storage_shelf"].pack()
+
+    # Функция для добавления данных в базу
+    def add_to_database():
+        conn = sqlite3.connect('library.db')
+        cursor = conn.cursor()
+
+        try:
+            if item_type.get() == "book":
+                title = fields["title"].get().strip()
+                author = fields["author"].get().strip()
+                section = fields["section"].get().strip()
+                storage_shelf = fields["storage_shelf"].get().strip()
+                publisher = fields["publisher"].get().strip()
+                year = fields["year"].get().strip()
+
+                if not all([title, author, section, storage_shelf, publisher, year]):
+                    raise ValueError("Заполните все поля для книги!")
+
+                # Сначала добавляем запись в таблицу books
+                cursor.execute("""
+                    INSERT INTO books (title, author, section)
+                    VALUES (?, ?, ?)
+                """, (title, author, section))
+                conn.commit()
+
+                # Получаем book_id только что добавленной книги
+                book_id = cursor.lastrowid
+
+                # Теперь добавляем запись в таблицу book_instances
+                cursor.execute("""
+                    INSERT INTO book_instances (book_id, storage_shelf, publisher, year, availability)
+                    VALUES (?, ?, ?, ?, 1)
+                """, (book_id, storage_shelf, publisher, int(year)))
+
+            elif item_type.get() == "journal":
+                title = fields["title"].get().strip()
+                issue = fields["issue"].get().strip()
+                publication_date = fields["publication_date"].get().strip()
+                section = fields["section"].get().strip()
+                storage_shelf = fields["storage_shelf"].get().strip()
+
+                if not all([title, issue, publication_date, section, storage_shelf]):
+                    raise ValueError("Заполните все поля для журнала!")
+
+                cursor.execute("""
+                    INSERT INTO journals (title, issue, publication_date, section, availability, storage_shelf)
+                    VALUES (?, ?, ?, ?, 1, ?)
+                """, (title, issue, publication_date, section, storage_shelf))
+
+            conn.commit()
+            messagebox.showinfo("Успех", "Элемент успешно добавлен в базу!")
+            window.destroy()
+        except (ValueError, sqlite3.Error) as e:
+            messagebox.showerror("Ошибка", f"Не удалось добавить элемент: {e}")
+        finally:
+            conn.close()
+
+    # Кнопка для добавления
+    Button(window, text="Добавить", command=add_to_database).pack(pady=20)
+    Button(window, text="Закрыть", command=window.destroy).pack()
+
+# Пример вызова: add_item_window()
+
 
 def pay_fine_window():
     """
@@ -1086,6 +1221,7 @@ def open_admin_dashboard(reader_id):
     create_rounded_button(admin_window, text="Возврат книги", command=return_window).pack(pady=10)
     create_rounded_button(admin_window, text="Выписать штраф", command=open_fine_window).pack(pady=10)
     create_rounded_button(admin_window, text="Погасить штраф", command=pay_fine_window).pack(pady=10)
+    create_rounded_button(admin_window, text="Добавить книгу или журнал", command=add_item_window).pack(pady=10)
 
     # Кнопка для выхода
     create_rounded_button(admin_window, text="Выйти", command=admin_window.destroy).pack(pady=5)
