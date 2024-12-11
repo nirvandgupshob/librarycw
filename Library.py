@@ -16,7 +16,6 @@ def initialize_database():
             first_name TEXT NOT NULL,
             last_name TEXT NOT NULL,
             phone_number TEXT NOT NULL UNIQUE,
-            active_debts BOOLEAN NOT NULL DEFAULT 0,
             password TEXT NOT NULL, 
             role TEXT NOT NULL 
         )
@@ -215,9 +214,7 @@ def pay_fine_window():
 
 
 def open_fine_window():
-    """
-    Открывает окно для выписки штрафа читателю.
-    """
+   # Открывает окно для выписки штрафа читателю.
     fine_window = Toplevel(root)
     configure_theme(fine_window)
     fine_window.title("Выписать штраф")
@@ -968,102 +965,91 @@ def open_user_dashboard(reader_id):
         conn = sqlite3.connect('library.db')
         cursor = conn.cursor()
 
-        # Получение имени, фамилии, количества активных долгов
-        cursor.execute("SELECT first_name, last_name, active_debts FROM readers WHERE reader_id = ?", (reader_id,))
+        # Получение имени и фамилии пользователя
+        cursor.execute("SELECT first_name, last_name FROM readers WHERE reader_id = ?", (reader_id,))
         reader_info = cursor.fetchone()
 
         if reader_info:
-            first_name, last_name, active_debts = reader_info
+            first_name, last_name = reader_info
 
             # Обновление текста меток
             name_label.configure(text=f"Имя: {first_name} {last_name}")
-            debts_label.configure(text=f"Активные долги: {'Есть' if active_debts > 0 else 'Нет'}")
 
-            # Обработка долгов
-            if active_debts > 0:
-                cursor.execute("""
-                    SELECT 
-                        loans.book_instance_id, 
-                        loans.journal_id, 
-                        loans.issue_date, 
-                        loans.due_date, 
-                        books.title AS book_title, 
-                        journals.title AS journal_title
-                    FROM loans
-                    LEFT JOIN book_instances ON loans.book_instance_id = book_instances.book_instance_id
-                    LEFT JOIN books ON book_instances.book_id = books.book_id
-                    LEFT JOIN journals ON loans.journal_id = journals.journal_id
-                    WHERE loans.reader_id = ? AND (julianday('now') - julianday(loans.due_date)) > 0
-                """, (reader_id,))
-                active_loans = cursor.fetchall()
+            # Проверка долгов
+            cursor.execute("""
+                SELECT 
+                    loans.book_instance_id, 
+                    loans.journal_id, 
+                    loans.issue_date, 
+                    loans.due_date, 
+                    books.title AS book_title, 
+                    journals.title AS journal_title
+                FROM loans
+                LEFT JOIN book_instances ON loans.book_instance_id = book_instances.book_instance_id
+                LEFT JOIN books ON book_instances.book_id = books.book_id
+                LEFT JOIN journals ON loans.journal_id = journals.journal_id
+                WHERE loans.reader_id = ? AND (julianday('now') - julianday(loans.due_date)) > 0
+            """, (reader_id,))
+            active_loans = cursor.fetchall()
 
-                # Если `debts_listbox` еще не создан, создаем его
+            # Обновление долгов
+            if active_loans:
+                debts_label.configure(text="Активные долги: Есть")
+
                 if not hasattr(update_user_information, "debts_listbox"):
                     update_user_information.debts_listbox = Listbox(user_window, width=80, height=10)
                     update_user_information.debts_listbox.pack(pady=5)
 
-                # Очистка списка долгов перед обновлением
                 update_user_information.debts_listbox.delete(0, END)
+                for loan in active_loans:
+                    book_instance_id, journal_id, issue_date, due_date, book_title, journal_title = loan
+                    if book_instance_id:
+                        item_title = f"Книга: {book_title} | ID экземпляра: {book_instance_id}"
+                    else:
+                        item_title = f"Журнал: {journal_title} | ID: {journal_id}"
 
-                if active_loans:
-                    for loan in active_loans:
-                        book_instance_id, journal_id, issue_date, due_date, book_title, journal_title = loan
-                        if book_instance_id:
-                            item_title = f"Книга: {book_title} | ID экземпляра: {book_instance_id}"
-                        else:
-                            item_title = f"Журнал: {journal_title} | ID: {journal_id}"
-
-                        update_user_information.debts_listbox.insert(
-                            END, f"{item_title} | Выдана: {issue_date} | Срок: {due_date}"
-                        )
-                else:
-                    # Если долгов нет, удаляем debts_listbox
-                    if hasattr(update_user_information, "debts_listbox"):
-                        update_user_information.debts_listbox.destroy()
-                        del update_user_information.debts_listbox
+                    update_user_information.debts_listbox.insert(
+                        END, f"{item_title} | Выдана: {issue_date} | Срок: {due_date}"
+                    )
             else:
-                # Удаляем debts_listbox, если он существует
+                debts_label.configure(text="Активные долги: Нет")
                 if hasattr(update_user_information, "debts_listbox"):
                     update_user_information.debts_listbox.destroy()
                     del update_user_information.debts_listbox
 
-            # Обработка штрафов
+            # Проверка штрафов
             cursor.execute("SELECT reason, amount, fine_date, status FROM fines WHERE reader_id = ?", (reader_id,))
             fines = cursor.fetchall()
 
-            # Обновление текста метки штрафов
-            fines_label.configure(text=f"Активные штрафы: {len(fines)}")
-
             if fines:
-                # Если `fines_listbox` еще не создан, создаем его
+                fines_label.configure(text=f"Активные штрафы: {len([fine for fine in fines if fine[3] == 0])}")
+
                 if not hasattr(update_user_information, "fines_listbox"):
                     update_user_information.fines_listbox = Listbox(user_window, width=80, height=10)
                     update_user_information.fines_listbox.pack(pady=5)
 
-                # Очистка списка штрафов перед обновлением
                 update_user_information.fines_listbox.delete(0, END)
-
                 for fine in fines:
                     reason, amount, fine_date, status = fine
-                    status_text = "Оплачен" if status == "Оплачен" else "Неоплачен"
+                    status_text = "Оплачен" if status else "Неоплачен"
                     update_user_information.fines_listbox.insert(
                         END, f"Штраф: {reason} | Сумма: {amount:.2f} | Дата: {fine_date} | Статус: {status_text}"
                     )
             else:
-                # Удаляем fines_listbox, если он существует
+                fines_label.configure(text="Активные штрафы: Нет")
                 if hasattr(update_user_information, "fines_listbox"):
                     update_user_information.fines_listbox.destroy()
                     del update_user_information.fines_listbox
         else:
             messagebox.showerror("Ошибка", "Не удалось загрузить информацию о пользователе.")
-        
+
         conn.close()
 
     # Создание окна личного кабинета пользователя
     user_window = Toplevel(root)
     configure_theme(user_window)
     user_window.title("Личный кабинет")
-    user_window.geometry("400x1000")
+    user_window.geometry("400x800")
 
     # Метки для отображения информации
     name_label = create_rounded_label(user_window, text="Загрузка...")  # Заглушка до обновления данных
@@ -1072,18 +1058,19 @@ def open_user_dashboard(reader_id):
     debts_label.pack(pady=5)
     fines_label = create_rounded_label(user_window, text="Загрузка...")  # Заглушка до обновления данных
     fines_label.pack(pady=5)
+
+    # Дополнительные кнопки
     search_button = create_rounded_button(user_window, text="Поиск книг/журналов", command=lambda: search_items(Toplevel(user_window)))
     search_button.pack(pady=10)
     create_rounded_button(user_window, text="Просмотреть очередь", command=show_queue_window).pack(pady=10)
     create_rounded_button(user_window, text="Записаться в очередь", command=lambda: join_queue_window(reader_id)).pack(pady=10)
-
-
 
     # Обновление информации о пользователе
     update_user_information()
 
     # Кнопка для выхода
     create_rounded_button(user_window, text="Выйти", command=user_window.destroy).pack(pady=5)
+
 
 
 def open_admin_dashboard(reader_id):
@@ -1119,6 +1106,5 @@ if __name__ == "__main__":
 '''
 Добавить:
 Внесение новой книги и журнала в базу данных
-Штрафы обдумать
 
 '''

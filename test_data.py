@@ -6,12 +6,12 @@ def populate_test_data():
 
     # Добавляем читателей
     cursor.executemany("""
-        INSERT INTO readers (first_name, last_name, phone_number, active_debts, password, role)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO readers (first_name, last_name, phone_number, password, role)
+        VALUES (?, ?, ?, ?, ?)
     """, [
-        ("Fenny", "Lirst", "1234567890", 0, "123", "Читатель"),
-        ("Lenny", "First", "0987654321", 0, "123", "Библиотекарь"),
-        ("Hit", "Vandal", "88005353535", 0, "123", "Читатель"),
+        ("Fenny", "Lirst", "1234567890", "123", "Читатель"),
+        ("Lenny", "First", "0987654321", "123", "Библиотекарь"),
+        ("Hit", "Vandal", "88005353535", "123", "Читатель"),
     ])
 
     # Добавляем книги
@@ -60,7 +60,7 @@ def populate_test_data():
     conn.commit()
     conn.close()
 
-# populate_test_data()
+populate_test_data()
 def fines():
     conn = sqlite3.connect('library.db')
     cursor = conn.cursor()
