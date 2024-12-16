@@ -104,17 +104,195 @@ def initialize_database():
     conn.commit()
     conn.close()
 
+
+def show_statistics_window():
+    window = Toplevel(root)
+    configure_theme(window)
+    window.title("Глобальная статистика библиотеки")
+    window.geometry("400x400")
+
+    conn = sqlite3.connect('library.db')
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT COUNT(*) FROM book_instances")
+        total_books = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM readers WHERE role = 'Читатель'")
+        total_readers = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM journals")
+        total_journals = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM book_instances WHERE availability = 1")
+        available_books = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM book_instances WHERE availability = 0")
+        reserved_books = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM journals WHERE availability = 0")
+        reserved_journals = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM journals WHERE availability = 1")
+        available_journals = cursor.fetchone()[0]
+
+
+
+        # Вывод статистики на экран
+        Label(window, text=f"Общее количество книг: {total_books}", font=("Arial", 12)).pack(pady=5)
+        Label(window, text=f"Общее количество журналов: {total_journals}", font=("Arial", 12)).pack(pady=5)
+        Label(window, text=f"Доступных книг: {available_books}", font=("Arial", 12)).pack(pady=5)
+        Label(window, text=f"Забронированных книг: {reserved_books}", font=("Arial", 12)).pack(pady=5)
+        Label(window, text=f"Доступных журналов: {available_journals}", font=("Arial", 12)).pack(pady=5)
+        Label(window, text=f"Забронированных журналов: {reserved_journals}", font=("Arial", 12)).pack(pady=5)
+        Label(window, text=f"Общее количество читателей: {total_readers}", font=("Arial", 12)).pack(pady=5)
+        # Дополнительная информация, например, общее количество экземпляров книг
+        # можно добавить дополнительные статистические данные в зависимости от потребностей.
+        
+    except sqlite3.Error as e:
+        messagebox.showerror("Ошибка", f"Не удалось получить статистику: {e}")
+    finally:
+        conn.close()
+
+    # Кнопка для закрытия окна
+    Button(window, text="Закрыть", command=window.destroy).pack(pady=20)
+
+def delete_item_window():
+    window = Toplevel(root)
+    configure_theme(window)
+    window.title("Удаление книги, журнала или экземпляра книги")
+    window.geometry("400x250")
+
+    # Выбор типа элемента (книга, журнал или экземпляр книги)
+    Label(window, text="Выберите тип элемента для удаления:").pack(pady=5)
+    item_type = StringVar(value="book")
+    Radiobutton(window, text="Книга", variable=item_type, value="book").pack()
+    Radiobutton(window, text="Журнал", variable=item_type, value="journal").pack()
+    Radiobutton(window, text="Экземпляр книги", variable=item_type, value="book_instance").pack()
+
+    # Поле для ввода ID
+    Label(window, text="Введите ID элемента для удаления:").pack(pady=5)
+    item_id_entry = Entry(window)
+    item_id_entry.pack()
+
+    # Функция для удаления элемента из базы данных
+    def delete_item():
+        item_id = item_id_entry.get().strip()
+
+        if not item_id:
+            messagebox.showerror("Ошибка", "Введите ID элемента для удаления!")
+            return
+
+        conn = sqlite3.connect('library.db')
+        cursor = conn.cursor()
+
+        try:
+            # Удаление книги
+            if item_type.get() == "book":
+                # Сначала удаляем экземпляры книги, если они есть
+                cursor.execute("""
+                    DELETE FROM book_instances WHERE book_id = ?
+                """, (item_id,))
+                # Затем удаляем саму книгу из books
+                cursor.execute("""
+                    DELETE FROM books WHERE book_id = ?
+                """, (item_id,))
+            
+            # Удаление журнала
+            elif item_type.get() == "journal":
+                cursor.execute("""
+                    DELETE FROM journals WHERE journal_id = ?
+                """, (item_id,))
+            
+            # Удаление экземпляра книги
+            elif item_type.get() == "book_instance":
+                cursor.execute("""
+                    DELETE FROM book_instances WHERE book_instance_id = ?
+                """, (item_id,))
+
+            conn.commit()
+            messagebox.showinfo("Успех", "Элемент успешно удален из базы!")
+            window.destroy()
+        except sqlite3.Error as e:
+            messagebox.showerror("Ошибка", f"Не удалось удалить элемент: {e}")
+        finally:
+            conn.close()
+
+    # Кнопка для удаления
+    Button(window, text="Удалить", command=delete_item).pack(pady=20)
+    Button(window, text="Закрыть", command=window.destroy).pack()
+
+
+def register_reader_window():
+    window = Toplevel(root)
+    configure_theme(window)
+    window.title("Регистрация нового читателя")
+    window.geometry("400x600")
+
+    # Поля для ввода данных
+    Label(window, text="Имя:").pack(pady=5)
+    first_name_entry = Entry(window)
+    first_name_entry.pack()
+
+    Label(window, text="Фамилия:").pack(pady=5)
+    last_name_entry = Entry(window)
+    last_name_entry.pack()
+
+    Label(window, text="Номер телефона:").pack(pady=5)
+    phone_number_entry = Entry(window)
+    phone_number_entry.pack()
+
+    Label(window, text="Пароль:").pack(pady=5)
+    password_entry = Entry(window, show="*")
+    password_entry.pack()
+
+    # Функция для сохранения читателя в базу данных
+    def register_reader():
+        first_name = first_name_entry.get().strip()
+        last_name = last_name_entry.get().strip()
+        phone_number = phone_number_entry.get().strip()
+        password = password_entry.get().strip()
+
+        if not all([first_name, last_name, phone_number, password]):
+            messagebox.showerror("Ошибка", "Все поля должны быть заполнены!")
+            return
+
+        # Проверяем уникальность номера телефона
+        conn = sqlite3.connect("library.db")
+        cursor = conn.cursor()
+
+        try:
+            cursor.execute("""
+                INSERT INTO readers (first_name, last_name, phone_number, password, role)
+                VALUES (?, ?, ?, ?, ?)
+            """, (first_name, last_name, phone_number, password, "Читатель"))
+            conn.commit()
+            messagebox.showinfo("Успех", "Регистрация прошла успешно!")
+            window.destroy()
+        except sqlite3.IntegrityError:
+            messagebox.showerror("Ошибка", "Этот номер телефона уже зарегистрирован!")
+        except sqlite3.Error as e:
+            messagebox.showerror("Ошибка", f"Не удалось зарегистрировать читателя: {e}")
+        finally:
+            conn.close()
+
+    # Кнопки для регистрации и закрытия окна
+    Button(window, text="Зарегистрировать", command=register_reader).pack(pady=20)
+    Button(window, text="Закрыть", command=window.destroy).pack()
+
+
 def add_item_window():
     window = Toplevel(root)
     configure_theme(window)
-    window.title("Добавление книги или журнала")
+    window.title("Добавление книги, журнала или экземпляра книги")
     window.geometry("400x1000")
 
-    # Выбор типа элемента (книга или журнал)
+    # Выбор типа элемента (книга, журнал или экземпляр книги)
     Label(window, text="Выберите тип элемента:").pack(pady=5)
     item_type = StringVar(value="book")
     Radiobutton(window, text="Книга", variable=item_type, value="book", command=lambda: show_fields("book")).pack()
     Radiobutton(window, text="Журнал", variable=item_type, value="journal", command=lambda: show_fields("journal")).pack()
+    Radiobutton(window, text="Экземпляр книги", variable=item_type, value="book_instance", command=lambda: show_fields("book_instance")).pack()
 
     # Фрейм для полей ввода
     fields_frame = Frame(window)
@@ -143,18 +321,6 @@ def add_item_window():
             fields["section"] = Entry(fields_frame)
             fields["section"].pack()
 
-            Label(fields_frame, text="Место хранения:").pack(pady=5)
-            fields["storage_shelf"] = Entry(fields_frame)
-            fields["storage_shelf"].pack()
-
-            Label(fields_frame, text="Издатель:").pack(pady=5)
-            fields["publisher"] = Entry(fields_frame)
-            fields["publisher"].pack()
-
-            Label(fields_frame, text="Год издания:").pack(pady=5)
-            fields["year"] = Entry(fields_frame)
-            fields["year"].pack()
-
         elif item_type == "journal":
             Label(fields_frame, text="Название:").pack(pady=5)
             fields["title"] = Entry(fields_frame)
@@ -176,6 +342,23 @@ def add_item_window():
             fields["storage_shelf"] = Entry(fields_frame)
             fields["storage_shelf"].pack()
 
+        elif item_type == "book_instance":
+            Label(fields_frame, text="ID книги:").pack(pady=5)
+            fields["book_id"] = Entry(fields_frame)
+            fields["book_id"].pack()
+
+            Label(fields_frame, text="Место хранения:").pack(pady=5)
+            fields["storage_shelf"] = Entry(fields_frame)
+            fields["storage_shelf"].pack()
+
+            Label(fields_frame, text="Издатель:").pack(pady=5)
+            fields["publisher"] = Entry(fields_frame)
+            fields["publisher"].pack()
+
+            Label(fields_frame, text="Год издания:").pack(pady=5)
+            fields["year"] = Entry(fields_frame)
+            fields["year"].pack()
+
     # Функция для добавления данных в базу
     def add_to_database():
         conn = sqlite3.connect('library.db')
@@ -186,28 +369,14 @@ def add_item_window():
                 title = fields["title"].get().strip()
                 author = fields["author"].get().strip()
                 section = fields["section"].get().strip()
-                storage_shelf = fields["storage_shelf"].get().strip()
-                publisher = fields["publisher"].get().strip()
-                year = fields["year"].get().strip()
 
-                if not all([title, author, section, storage_shelf, publisher, year]):
+                if not all([title, author, section]):
                     raise ValueError("Заполните все поля для книги!")
 
-                # Сначала добавляем запись в таблицу books
                 cursor.execute("""
                     INSERT INTO books (title, author, section)
                     VALUES (?, ?, ?)
                 """, (title, author, section))
-                conn.commit()
-
-                # Получаем book_id только что добавленной книги
-                book_id = cursor.lastrowid
-
-                # Теперь добавляем запись в таблицу book_instances
-                cursor.execute("""
-                    INSERT INTO book_instances (book_id, storage_shelf, publisher, year, availability)
-                    VALUES (?, ?, ?, ?, 1)
-                """, (book_id, storage_shelf, publisher, int(year)))
 
             elif item_type.get() == "journal":
                 title = fields["title"].get().strip()
@@ -224,6 +393,20 @@ def add_item_window():
                     VALUES (?, ?, ?, ?, 1, ?)
                 """, (title, issue, publication_date, section, storage_shelf))
 
+            elif item_type.get() == "book_instance":
+                book_id = fields["book_id"].get().strip()
+                storage_shelf = fields["storage_shelf"].get().strip()
+                publisher = fields["publisher"].get().strip()
+                year = fields["year"].get().strip()
+
+                if not all([book_id, storage_shelf, publisher, year]):
+                    raise ValueError("Заполните все поля для экземпляра книги!")
+
+                cursor.execute("""
+                    INSERT INTO book_instances (book_id, storage_shelf, publisher, year, availability)
+                    VALUES (?, ?, ?, ?, 1)
+                """, (book_id, storage_shelf, publisher, int(year)))
+
             conn.commit()
             messagebox.showinfo("Успех", "Элемент успешно добавлен в базу!")
             window.destroy()
@@ -235,8 +418,6 @@ def add_item_window():
     # Кнопка для добавления
     Button(window, text="Добавить", command=add_to_database).pack(pady=20)
     Button(window, text="Закрыть", command=window.destroy).pack()
-
-# Пример вызова: add_item_window()
 
 
 def pay_fine_window():
@@ -1211,18 +1392,20 @@ def open_user_dashboard(reader_id):
 def open_admin_dashboard(reader_id):
     admin_window = Toplevel(root)
     configure_theme(admin_window)
-    admin_window.title("Личный кабинет")
+    admin_window.title("Меню библиотекаря")
     admin_window.geometry("400x1000")
 
     search_button = create_rounded_button(admin_window, text="Поиск книг/журналов", command=lambda: search_items(Toplevel(admin_window)))
     search_button.pack(pady=10)
-    create_rounded_button(admin_window, text="Выдача книги", command=issue_window).pack(pady=10)
+    create_rounded_button(admin_window, text="Выдача литературы", command=issue_window).pack(pady=10)
     create_rounded_button(admin_window, text="Просмотреть очередь", command=show_queue_window).pack(pady=10)
-    create_rounded_button(admin_window, text="Возврат книги", command=return_window).pack(pady=10)
+    create_rounded_button(admin_window, text="Возврат литературы", command=return_window).pack(pady=10)
     create_rounded_button(admin_window, text="Выписать штраф", command=open_fine_window).pack(pady=10)
     create_rounded_button(admin_window, text="Погасить штраф", command=pay_fine_window).pack(pady=10)
     create_rounded_button(admin_window, text="Добавить книгу или журнал", command=add_item_window).pack(pady=10)
-
+    create_rounded_button(admin_window, text="Зарегистрировать читателя", command=register_reader_window).pack(pady=10)
+    create_rounded_button(admin_window, text="Удалить книгу или журнал", command=delete_item_window).pack(pady=10)
+    create_rounded_button(admin_window, text="Статистика", command=show_statistics_window).pack(pady=10)
     # Кнопка для выхода
     create_rounded_button(admin_window, text="Выйти", command=admin_window.destroy).pack(pady=5)
     
@@ -1238,9 +1421,3 @@ if __name__ == "__main__":
     initialize_database()
     main_window()
     root.mainloop()
-
-'''
-Добавить:
-Внесение новой книги и журнала в базу данных
-
-'''
